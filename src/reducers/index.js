@@ -1,8 +1,23 @@
+import { combineReducers } from 'redux';
 // Import our CONSTANTS from our actions folder's index.js file
 import {
   ADD_RECIPE,
   REMOVE_FROM_CALENDAR,
 } from '../actions'
+
+function food (state = {}, action) {
+  switch (action.type) {
+    case ADD_RECIPE : 
+     const { recipe } = action
+
+     return {
+      ...state,
+      [recipe.label]: recipe,
+     }
+    default : 
+      return state
+  }
+}
 
 const initialCalendarState = {
   sunday: {
@@ -43,10 +58,9 @@ const initialCalendarState = {
 }
 
 
-// Very first time our reducer is called, it'll be called with a state of undefined
+// In this example, the very first time our reducer is called, it'll be called with a state of undefined
 // So in this example we then set our intial state to be the object above...
 // state = initialCalendarState ......AKA if state is undefined, set it to our object above
-
 function calendar(state = initialCalendarState, action) {
   const { day, recipe, meal } = action;
 
@@ -79,4 +93,9 @@ function calendar(state = initialCalendarState, action) {
 }
 
 // Finally export our reducer so that it can be imported elsewhere in our project
-export default calendar;
+// export default calendar;
+
+export default combineReducers({
+  food,
+  calendar,
+});
