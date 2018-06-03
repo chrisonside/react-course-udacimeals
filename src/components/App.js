@@ -1,6 +1,15 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import { addRecipe, removeFromCalendar } from '../actions'
+import { addRecipe, removeFromCalendar } from '../actions';
+import { capitalize } from '../utils/helper';
+import CalendarIcon from 'react-icons/lib/fa/calendar-plus-o';
+import ArrowRightIcon from 'react-icons/lib/fa/arrow-circle-right';
+import Modal from 'react-modal';
+import Loading from 'react-loading';
+import { fetchRecipes } from '../utils/api';
+import FoodList from './FoodList';
+import ShoppingList from './ShoppingList.js'
+   
 
 class App extends Component {
   // SO BEFORE mapDispatchToProps() was used, we could dispatch an action like so: 
@@ -14,13 +23,166 @@ class App extends Component {
   //   this.props.selectRecipe({})
   // }
 
+  // Set up my local state that won't be handled by Redux
+  state = {
+    foodModalOpen: false,
+    meal: null,
+    day: null,
+    food: null,
+    loadingFood: false,
+    ingredientsModalOpen: false,
+  }
+  openFoodModal = ({ meal, day }) => {
+    this.setState(() => ({
+      foodModalOpen: true,
+      meal,
+      day,
+    }))
+  }
+  closeFoodModal = () => {
+    this.setState(() => ({
+      foodModalOpen: false,
+      meal: null,
+      day: null,
+      food: null,
+    }))
+  }
+  searchFood = (e) => {
+    if (!this.input.value) {
+      return
+    }
+
+    e.preventDefault()
+
+    this.setState(() => ({ loadingFood: true }))
+
+    fetchRecipes(this.input.value)
+      .then((food) => this.setState(() => ({
+        food,
+        loadingFood: false,
+      })))
+  }
+
+  openIngredientsModal = () => this.setState(() => ({ ingredientsModalOpen: true }));
+  closeIngredientsModal = () => this.setState(() => ({ ingredientsModalOpen: false }));
+
+  generateShoppingList = () => {
+    return this.props.calendar.reduce((result, { meals }) => {
+      const { breakfast, lunch, dinner } = meals
+      // Push meals to a single array
+      breakfast && result.push(breakfast)
+      lunch && result.push(lunch)
+      dinner && result.push(dinner)
+
+      return result
+    }, []) 
+    // Then flatten that array
+    .reduce((ings, { ingredientLines }) => ings.concat(ingredientLines), [])
+  }
+
   render() {
     // The log here nows shows that we have dispatch, as we're exporting using connect()()
     // So if we want to be able to dispatch an action inside of a component, you need to is CONNECT THAT COMPONENT - then you can call dispatch
-    console.log('Props', this.props);
+    // console.log('Props', this.props);
+
+    const { foodModalOpen, loadingFood, food, ingredientsModalOpen } = this.state
+    // We are getting calendar and remove from our mapStateToProps and mapDispathToProps. And selectRecipe from 
+    const { calendar, selectRecipe, remove } = this.props
+    const mealOrder = ['breakfast', 'lunch', 'dinner'];
+
     return (
-      <div>
-        Hello React-Redux
+      <div className='container'>
+
+        <div className='nav'>
+          <h1 className='header'>UdaciMeals</h1>
+          <button
+            className='shopping-list'
+            onClick={this.openIngredientsModal}>
+              Shopping List
+          </button>
+        </div>
+
+        <ul className='meal-types'>
+          {mealOrder.map((mealType) => (
+            <li key={mealType} className='subheader'>
+              {capitalize(mealType)}
+            </li>
+          ))}
+        </ul>
+
+        <div className='calendar'>
+          <div className='days'>
+            {calendar.map(({ day }) => <h3 key={day} className='subheader'>{capitalize(day)}</h3>)}
+          </div>
+          <div className='icon-grid'>
+            {calendar.map(({ day, meals }) => (
+              <ul key={day}>
+                {mealOrder.map((meal) => (
+                  <li key={meal} className='meal'>
+                    {meals[meal]
+                      ? <div className='food-item'>
+                          <img src={meals[meal].image} alt={meals[meal].label}/>
+                          <button onClick={() => remove({meal, day})}>Clear</button>
+                        </div>
+                      : <button onClick={() => this.openFoodModal({meal, day})} className='icon-btn'>
+                          <CalendarIcon size={30}/>
+                        </button>}
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
+        </div>
+
+        <Modal
+          className='modal'
+          overlayClassName='overlay'
+          isOpen={foodModalOpen}
+          onRequestClose={this.closeFoodModal}
+          contentLabel='Modal'
+        >
+          <div>
+            {loadingFood === true
+              ? <Loading delay={200} type='spin' color='#222' className='loading' />
+              : <div className='search-container'>
+                  <h3 className='subheader'>
+                    Find a meal for {capitalize(this.state.day)} {this.state.meal}.
+                  </h3>
+                  <div className='search'>
+                    <input
+                      className='food-input'
+                      type='text'
+                      placeholder='Search Foods'
+                      ref={(input) => this.input = input}
+                    />
+                    <button
+                      className='icon-btn'
+                      onClick={this.searchFood}>
+                        <ArrowRightIcon size={30}/>
+                    </button>
+                  </div>
+                  {food !== null && (
+                    <FoodList
+                      food={food}
+                      onSelect={(recipe) => {
+                        selectRecipe({ recipe, day: this.state.day, meal: this.state.meal })
+                        this.closeFoodModal()
+                      }}
+                    />)}
+                </div>}
+          </div>
+        </Modal>
+
+        <Modal
+          className='modal'
+          overlayClassName='overlay'
+          isOpen={ingredientsModalOpen}
+          onRequestClose={this.closeIngredientsModal}
+          contentLabel='Modal'
+        >
+          {ingredientsModalOpen && <ShoppingList list={this.generateShoppingList()}/>}
+        </Modal>
+
       </div>
     )
   }
@@ -37,10 +199,9 @@ function mapStateToProps( {food, calendar} ) {
   const dayOrder = ['sunday','monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   
   // So lets shape our data into an array
-  // Note - Object.keys (not Object.prototype.keys) provides an array of Object properties (which we can then work with as an array, e.g. to reduce in our case)
-  // So I'm going to return an object that a calendary object that has a calendar property on it...
+  // Object.keys (not Object.prototype.keys) provides an array of Object properties (which we can then work with as an array, e.g. to reduce in our case)
+  // So I'm going to return an object that has a calendar property on it...
   // And we want to reduce all of Object.keys(calendar[day]) to a single object
-  // Note that 
   return {
     calendar: dayOrder.map((day) => ({
       day,
@@ -84,7 +245,7 @@ const initialCalendarState = {
     dinner: null
   }
 But in React, especially if you want to map over data and output things in a grid, it makes sense to work with an array rather than an object. 
-e.g. where for each object in the calendary array, you'd have: 
+e.g. where for each object in the calendar array, you'd have: 
 day: monday,
 meals: {
   breakfast: null,
